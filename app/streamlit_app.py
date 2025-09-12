@@ -13,6 +13,10 @@ from dotenv import load_dotenv
 
 from rag.retriever import QdrantRetriever
 from rag.generator import generate_answer_stream
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from peft import PeftModel
+import torch
+from rag.prompt import build_prompt, build_style_prompt
 
 
 load_dotenv()
@@ -67,37 +71,65 @@ def _to_ctx(retrieved) -> List[Dict[str, str]]:
 
 if ask and query.strip():
 	status = st.status("Contacting Qdrant and searching...", state="running")
+	status.write("Initializing retrieval...")
 	try:
 		retriever = QdrantRetriever(collection_name=collection_name, embedding_model_name=embedding_model, top_k=top_k)
+		status.write("Querying Qdrant for top-K passages...")
 		hits = retriever.retrieve(query=query, score_threshold=(score_threshold or None))
 		status.update(label="Qdrant search completed", state="complete")
 	except Exception as e:
 		status.update(label=f"Qdrant search failed: {e}", state="error")
 		raise
 
-	st.subheader("Answer")
+	st.subheader("Modern-English Answer (Base Model via Ollama)")
 	ctx = _to_ctx(hits)
 	os.environ["PROMPT_MAX_CONTEXTS"] = str(int(prompt_max_contexts))
 	os.environ["PROMPT_MAX_CHARS_PER_CONTEXT"] = str(int(prompt_max_chars))
 	os.environ["OLLAMA_NUM_PREDICT"] = str(int(num_predict))
 	os.environ["OLLAMA_TEMPERATURE"] = str(float(temperature))
 
-	answer_container = st.empty()
-	streamed_text = []
-	gen_status = st.status("Generating answer...", state="running")
-	try:
-		for chunk in generate_answer_stream(
-			question=query,
-			contexts=ctx,
-			model=ollama_model,
-			max_tokens=int(num_predict),
-			temperature=float(temperature),
-		):
-			streamed_text.append(chunk)
-			answer_container.write("".join(streamed_text))
-		gen_status.update(label="Answer generation completed", state="complete")
-	except Exception as e:
-		gen_status.update(label=f"Answer generation failed: {e}", state="error")
+	# Step 1 with Ollama: stream and collect the grounded modern-English answer
+	gen_status = st.status("Generating with Ollama...", state="running")
+	modern_answer_chunks = []
+	modern_answer_placeholder = st.empty()
+	for idx, chunk in enumerate(generate_answer_stream(
+		question=query,
+		contexts=ctx,
+		model=(ollama_model or None),
+		max_tokens=int(num_predict),
+		temperature=float(temperature),
+	)):
+		modern_answer_chunks.append(chunk)
+		if idx % 10 == 0:
+			modern_answer_placeholder.write("".join(modern_answer_chunks))
+	modern_answer = "".join(modern_answer_chunks)
+	modern_answer_placeholder.write(modern_answer)
+	gen_status.update(label="Generation completed", state="complete")
+
+	# Step 2: Style transfer (LoRA model)
+	st.subheader("Stylized Output (LoRA Adapter)")
+	@st.cache_resource
+	def load_lora_model():
+		base_model_name = os.getenv("LORA_BASE_MODEL", "Qwen/Qwen2.5-0.5B-Instruct")
+		adapter_repo = os.getenv("LORA_ADAPTER_REPO", "asulova/hamlet-model")
+		model = AutoModelForCausalLM.from_pretrained(base_model_name, device_map="cpu")
+		tokenizer = AutoTokenizer.from_pretrained(base_model_name)
+		tokenizer.pad_token = tokenizer.eos_token
+		model = PeftModel.from_pretrained(model, adapter_repo)
+		model.eval()
+		return model, tokenizer
+
+	lora_model, lora_tokenizer = load_lora_model()
+	style_prompt = build_style_prompt(modern_answer)
+	style_status = st.status("Stylizing with LoRA adapter...", state="running")
+	style_placeholder = st.empty()
+	style_inputs = lora_tokenizer(style_prompt, return_tensors="pt")
+	with torch.no_grad():
+		style_outputs = lora_model.generate(**style_inputs, 
+			max_new_tokens=int(num_predict))
+	styled_answer = lora_tokenizer.decode(style_outputs[0], skip_special_tokens=True)
+	style_placeholder.write(styled_answer)
+	style_status.update(label="Stylization completed", state="complete")
 
 	st.subheader("Sources")
 	for i, h in enumerate(hits, start=1):

@@ -11,14 +11,13 @@ def build_prompt(question: str, contexts: List[Dict[str, str]]) -> str:
     """
 
     context_blocks = _format_context_blocks(contexts)
-
     context_text = "\n\n".join(context_blocks)
 
     system_instructions = (
-        "You are an assistant that answers strictly based on the provided book/document context. "
-        "Use only the CONTEXT to answer. "
-        "If the answer is not in the context, say plainly: 'I can't find this in the context.' "
-        "Respond in clear, concise English."
+        "You are an assistant."
+        "Rewrite the following passage in modern, clear English. "
+        "Do not invent content, add ideas, or change facts. "
+        "Preserve the original meaning exactly; only adjust wording and phrasing for readability."
     )
 
     prompt = (
@@ -43,9 +42,10 @@ def build_messages(question: str, contexts: List[Dict[str, str]]):
     context_text = "\n\n".join(context_blocks) or "(No context found)"
 
     system = (
-        "You are an assistant that answers strictly based on the provided book/document context. "
-        "Use only the CONTEXT. If the answer is not present, reply: "
-        "'I can't find this in the context.' Respond in clear, concise English."
+        "You are an assistant. You must answer ONLY using the passages provided in the CONTEXT. "
+        "Do NOT use prior knowledge, make assumptions, misattribute speech, or add information not present in the CONTEXT. "
+        "If the answer is not found word-for-word or as a clear paraphrase in the CONTEXT, reply exactly: 'I can't find this in the context.' "
+        "Respond in clear, concise English."
     )
 
     user = (
@@ -58,6 +58,23 @@ def build_messages(question: str, contexts: List[Dict[str, str]]):
         {"role": "system", "content": system},
         {"role": "user", "content": user},
     ]
+
+
+def build_style_prompt(modern_answer: str) -> str:
+    """Build a prompt that asks the model to rewrite an answer in its learned style.
+
+    The model must not add or invent any new information.
+    """
+    return (
+        "INSTRUCTIONS:\n"
+        "Rewrite the following passage using the stylistic patterns learned by this model. " 
+        "Do not invent content, add ideas, or change facts. " 
+        "Preserve the original meaning exactly; only adjust wording, phrasing, and style according to the model’s training."
+        "\n\n"
+        "PASSAGE:\n"
+        f"{modern_answer}\n\n"
+        "STYLIZED OUTPUT:"
+    )
 
 
 def _format_context_blocks(contexts: List[Dict[str, str]]) -> List[str]:

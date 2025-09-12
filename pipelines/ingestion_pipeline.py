@@ -13,8 +13,8 @@ def ingestion_pipeline(
     embedding_model_name: str,
     qdrant_url: str = "",
     qdrant_api_key: str = "",
-    chunk_tokens: int = 250,
-    overlap_tokens: int = 40,
+    chunk_tokens: int = 500,
+    overlap_tokens: int = 75,
 ):
     docs = load_documents(data_dir=data_dir)
     chunks = chunk_documents(
