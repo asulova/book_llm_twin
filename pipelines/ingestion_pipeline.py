@@ -20,6 +20,7 @@ def ingestion_pipeline(
     chunks = chunk_documents(
         documents=docs, chunk_tokens=chunk_tokens, overlap_tokens=overlap_tokens
     )
+    # Only embed original chunks (modernization removed)
     points = embed_documents(chunks=chunks, embedding_model_name=embedding_model_name)
     index_qdrant(
         points=points,

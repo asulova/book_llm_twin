@@ -21,6 +21,7 @@ def _format_error(prefix: str, err: Exception) -> str:
         f"(Check the Ollama service at {host} and the model name/tag in the sidebar.)"
     )
 
+
 def generate_answer_stream(
     question: str,
     contexts: List[Dict[str, str]],
@@ -28,10 +29,10 @@ def generate_answer_stream(
     max_tokens: Optional[int] = None,
     temperature: Optional[float] = None,
 ) -> Iterator[str]:
-    """Stream an answer token-by-token from Ollama for better perceived latency."""
+    """Stream an answer token-by-token from the selected model (via Ollama) for better perceived latency."""
     model_name = model or os.getenv("OLLAMA_MODEL")
     if not model_name:
-        yield "OLLAMA_MODEL is not set. Define it in your .env file."
+        yield "No model specified. Define a model name in your .env file or pass it as an argument."
         return
     prompt = build_prompt(question, contexts)
 
@@ -58,12 +59,12 @@ def generate_answer_stream(
                 yield chunk
         if any_chunk:
             return
-        logger.warning("Ollama generate(stream): completed with no chunks")
+        logger.warning("Model generate(stream): completed with no chunks")
     except Exception as err:
-        yield _format_error("Error during generate(stream)" , err)
+        yield f"Error during generate(stream) for model '{model_name}': {type(err).__name__}: {str(err)}"
         return
 
-    # Fallback to chat streaming
+    # Fallback to chat streaming if generate fails
     messages = build_messages(question, contexts)
     try:
         stream = ollama.chat(
@@ -82,9 +83,9 @@ def generate_answer_stream(
                 any_chunk = True
                 yield content
         if not any_chunk:
-            logger.warning("Ollama chat(stream): completed with no chunks")
+            logger.warning("Model chat(stream): completed with no chunks")
         return
     except Exception as err:
-        yield _format_error("Error during chat(stream)", err)
+        yield f"Error during chat(stream) for model '{model_name}': {type(err).__name__}: {str(err)}"
 
 

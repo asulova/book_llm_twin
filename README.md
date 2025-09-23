@@ -109,6 +109,6 @@ Invoke-RestMethod -Method DELETE http://localhost:6333/collections/book
   - Balanced quality: `llama3.1:8b-instruct`
   - Lighter/CPU: `qwen2.5:3b`
 - LoRA style (examples):
-  - Base: `Qwen/Qwen2.5-0.5B-Instruct`
+  - Base: `Qwen/Qwen2.5-1.5B-Instruct`
   - Adapter: `asulova/hamlet-model`
 

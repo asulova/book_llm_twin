@@ -47,7 +47,7 @@ with st.sidebar:
 	else:
 		st.caption(f"Ollama model (from .env): {ollama_model}")
 
-	top_k = st.slider("Top-K (retrieval)", 1, 10, int(os.getenv("TOP_K", "5")))
+	top_k = st.slider("Top-K (retrieval)", 1, 10, int(os.getenv("TOP_K", "3")))
 	score_threshold = st.slider("Score threshold (optional)", 0.0, 1.0, 0.0, 0.01)
 
 	st.divider()
@@ -106,30 +106,58 @@ if ask and query.strip():
 	modern_answer_placeholder.write(modern_answer)
 	gen_status.update(label="Generation completed", state="complete")
 
-	# Step 2: Style transfer (LoRA model)
-	st.subheader("Stylized Output (LoRA Adapter)")
+	# Step 2: Hamlet Model Output (LoRA merged)
+	st.subheader("Hamlet Model Output (LoRA merged)")
 	@st.cache_resource
-	def load_lora_model():
+	def load_hamlet_merged_model():
 		base_model_name = os.getenv("LORA_BASE_MODEL", "Qwen/Qwen2.5-0.5B-Instruct")
 		adapter_repo = os.getenv("LORA_ADAPTER_REPO", "asulova/hamlet-model")
-		model = AutoModelForCausalLM.from_pretrained(base_model_name, device_map="cpu")
+		base_model = AutoModelForCausalLM.from_pretrained(base_model_name, device_map="cpu")
 		tokenizer = AutoTokenizer.from_pretrained(base_model_name)
 		tokenizer.pad_token = tokenizer.eos_token
-		model = PeftModel.from_pretrained(model, adapter_repo)
+		peft_model = PeftModel.from_pretrained(base_model, adapter_repo)
+		merged_model = peft_model.merge_and_unload()
+		merged_model.eval()
+		return merged_model, tokenizer
+
+	hamlet_model, hamlet_tokenizer = load_hamlet_merged_model()
+	hamlet_prompt = build_style_prompt(modern_answer)
+	hamlet_status = st.status("Generating with Hamlet (LoRA merged)...", state="running")
+	hamlet_placeholder = st.empty()
+	hamlet_inputs = hamlet_tokenizer(hamlet_prompt, return_tensors="pt")
+	with torch.no_grad():
+		hamlet_outputs = hamlet_model.generate(
+			**hamlet_inputs,
+			max_new_tokens=int(num_predict)
+		)
+	hamlet_answer = hamlet_tokenizer.decode(hamlet_outputs[0], skip_special_tokens=True)
+	hamlet_placeholder.write(hamlet_answer)
+	hamlet_status.update(label="Hamlet (LoRA merged) generation completed", state="complete")
+
+	# Step 3: Hamlet-DPO Model Output
+	st.subheader("Hamlet-DPO Model Output")
+	@st.cache_resource
+	def load_hamlet_dpo_model():
+		dpo_repo = os.getenv("HAMLET_DPO_MODEL", "asulova/hamlet-dpo")
+		model = AutoModelForCausalLM.from_pretrained(dpo_repo, device_map="cpu")
+		tokenizer = AutoTokenizer.from_pretrained(dpo_repo)
+		tokenizer.pad_token = tokenizer.eos_token
 		model.eval()
 		return model, tokenizer
 
-	lora_model, lora_tokenizer = load_lora_model()
-	style_prompt = build_style_prompt(modern_answer)
-	style_status = st.status("Stylizing with LoRA adapter...", state="running")
-	style_placeholder = st.empty()
-	style_inputs = lora_tokenizer(style_prompt, return_tensors="pt")
+	dpo_model, dpo_tokenizer = load_hamlet_dpo_model()
+	dpo_prompt = build_style_prompt(modern_answer)
+	dpo_status = st.status("Generating with Hamlet-DPO...", state="running")
+	dpo_placeholder = st.empty()
+	dpo_inputs = dpo_tokenizer(dpo_prompt, return_tensors="pt")
 	with torch.no_grad():
-		style_outputs = lora_model.generate(**style_inputs, 
-			max_new_tokens=int(num_predict))
-	styled_answer = lora_tokenizer.decode(style_outputs[0], skip_special_tokens=True)
-	style_placeholder.write(styled_answer)
-	style_status.update(label="Stylization completed", state="complete")
+		dpo_outputs = dpo_model.generate(
+			**dpo_inputs,
+			max_new_tokens=int(num_predict)
+		)
+	dpo_answer = dpo_tokenizer.decode(dpo_outputs[0], skip_special_tokens=True)
+	dpo_placeholder.write(dpo_answer)
+	dpo_status.update(label="Hamlet-DPO generation completed", state="complete")
 
 	st.subheader("Sources")
 	for i, h in enumerate(hits, start=1):
