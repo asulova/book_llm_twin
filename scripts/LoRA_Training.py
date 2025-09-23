@@ -14,11 +14,11 @@ from peft import LoraConfig
 from huggingface_hub import login, create_repo
 
 # === 1. Hugging Face token & repo config ===
-HF_TOKEN = "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"  # <-- replace with your HF token
+HF_TOKEN = ""  # <-- replace with your HF token
 HF_REPO  = "asulova/hamlet-model"                     # <-- your repo name
 
 # Optional: CometML logging
-os.environ["COMET_API_KEY"] = "I8qrnYah9S5ZBrqNheL2DPF50"  # or leave empty
+os.environ["COMET_API_KEY"] = ""  # or leave empty
 os.environ["COMET_PROJECT_NAME"] = "shakespeare"
 os.environ["COMET_WORKSPACE"] = "aldi-sulova"
 
