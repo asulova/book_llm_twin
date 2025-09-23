@@ -14,13 +14,19 @@ from peft import LoraConfig
 from huggingface_hub import login, create_repo
 
 # === 1. Hugging Face token & repo config ===
-HF_TOKEN = ""  # <-- replace with your HF token
+HF_TOKEN = os.getenv("HUGGINGFACEHUB_API_TOKEN", "")
 HF_REPO  = "asulova/hamlet-model"                     # <-- your repo name
 
 # Optional: CometML logging
-os.environ["COMET_API_KEY"] = ""  # or leave empty
-os.environ["COMET_PROJECT_NAME"] = "shakespeare"
-os.environ["COMET_WORKSPACE"] = "aldi-sulova"
+os.environ["COMET_API_KEY"] = os.getenv("COMET_API_KEY", "")
+os.environ["COMET_PROJECT_NAME"] = os.getenv("COMET_PROJECT_NAME", "shakespeare")
+os.environ["COMET_WORKSPACE"] = os.getenv("COMET_WORKSPACE", "aldi-sulova")
+
+if HF_TOKEN:
+    try:
+        login(token=HF_TOKEN)
+    except Exception:
+        pass
 
 # === 2. Load Qwen2.5-3B model ===
 model_name = "Qwen/Qwen2.5-0.5B-Instruct"
@@ -29,10 +35,9 @@ model = AutoModelForCausalLM.from_pretrained(
     model_name,
     device_map="auto",
     torch_dtype=torch.float16,
-    use_auth_token=HF_TOKEN
 )
 
-tokenizer = AutoTokenizer.from_pretrained(model_name, use_auth_token=HF_TOKEN)
+tokenizer = AutoTokenizer.from_pretrained(model_name)
 tokenizer.pad_token = tokenizer.eos_token  # important for batching
 
 # === 3. LoRA adapter config ===
